@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   # ============================================================
-  # Job 1: 检查上游版本
+  # Job 1: check upstream
   # ============================================================
   check-upstream:
     runs-on: ubuntu-latest
@@ -33,7 +33,7 @@ jobs:
           echo "download_url=$URL" >> "$GITHUB_OUTPUT"
           echo "Latest upstream: $TAG"
 
-      - name: Compare with stored tag and check existing release
+      - name: Compare and decide
         id: compare
         run: |
           LATEST="${{ steps.get_latest.outputs.tag }}"
@@ -45,18 +45,18 @@ jobs:
           HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
             "https://api.github.com/repos/${{ github.repository }}/releases/tags/${LATEST}")
           if [ "$HTTP" = "200" ]; then
-            echo "WARN: Release ${LATEST} already exists in this repo, skip"
+            echo "SKIP: release ${LATEST} already exists"
             echo "new_release=false" >> "$GITHUB_OUTPUT"
           elif [ "$LATEST" != "$STORED" ] && [ -n "$LATEST" ]; then
-            echo "NEW: upstream=$LATEST stored=$STORED"
+            echo "BUILD: $LATEST (was: $STORED)"
             echo "new_release=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No new release"
+            echo "SKIP: no new release"
             echo "new_release=false" >> "$GITHUB_OUTPUT"
           fi
 
   # ============================================================
-  # Job 2: 多架构编译
+  # Job 2: multi-arch build
   # ============================================================
   build:
     needs: check-upstream
@@ -66,211 +66,61 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # ============ Linux glibc ============
-          - name: linux-amd64
-            type: apt
-            cc: gcc
-            pkg: ""
-            flags: "-static"
-          - name: linux-i386
-            type: apt
-            cc: gcc
-            pkg: "gcc-i686-linux-gnu"
-            flags: "-static -m32"
-          - name: linux-arm64
-            type: apt
-            cc: aarch64-linux-gnu-gcc
-            pkg: "gcc-aarch64-linux-gnu"
-            flags: "-static"
-          - name: linux-armv7
-            type: apt
-            cc: arm-linux-gnueabihf-gcc
-            pkg: "gcc-arm-linux-gnueabihf"
-            flags: "-static"
-          - name: linux-armv6
-            type: apt
-            cc: arm-linux-gnueabi-gcc
-            pkg: "gcc-arm-linux-gnueabi"
-            flags: "-static"
-          - name: linux-mips
-            type: apt
-            cc: mips-linux-gnu-gcc
-            pkg: "gcc-mips-linux-gnu"
-            flags: "-static"
-          - name: linux-mipsel
-            type: apt
-            cc: mipsel-linux-gnu-gcc
-            pkg: "gcc-mipsel-linux-gnu"
-            flags: "-static"
-          - name: linux-mips64
-            type: apt
-            cc: mips64-linux-gnuabi64-gcc
-            pkg: "gcc-mips64-linux-gnuabi64"
-            flags: "-static"
-          - name: linux-mips64el
-            type: apt
-            cc: mips64el-linux-gnuabi64-gcc
-            pkg: "gcc-mips64el-linux-gnuabi64"
-            flags: "-static"
-          - name: linux-riscv64
-            type: apt
-            cc: riscv64-linux-gnu-gcc
-            pkg: "gcc-riscv64-linux-gnu"
-            flags: "-static"
-          - name: linux-powerpc
-            type: apt
-            cc: powerpc-linux-gnu-gcc
-            pkg: "gcc-powerpc-linux-gnu"
-            flags: "-static"
-          - name: linux-powerpc64
-            type: apt
-            cc: powerpc64-linux-gnu-gcc
-            pkg: "gcc-powerpc64-linux-gnu"
-            flags: "-static"
-          - name: linux-ppc64le
-            type: apt
-            cc: powerpc64le-linux-gnu-gcc
-            pkg: "gcc-powerpc64le-linux-gnu"
-            flags: "-static"
-          - name: linux-s390x
-            type: apt
-            cc: s390x-linux-gnu-gcc
-            pkg: "gcc-s390x-linux-gnu"
-            flags: "-static"
-          - name: linux-sparc64
-            type: apt
-            cc: sparc64-linux-gnu-gcc
-            pkg: "gcc-sparc64-linux-gnu"
-            flags: "-static"
-          - name: linux-m68k
-            type: apt
-            cc: m68k-linux-gnu-gcc
-            pkg: "gcc-m68k-linux-gnu"
-            flags: "-static"
-          - name: linux-alpha
-            type: apt
-            cc: alpha-linux-gnu-gcc
-            pkg: "gcc-alpha-linux-gnu"
-            flags: "-static"
-          - name: linux-hppa
-            type: apt
-            cc: hppa-linux-gnu-gcc
-            pkg: "gcc-hppa-linux-gnu"
-            flags: "-static"
-          - name: linux-sh4
-            type: apt
-            cc: sh4-linux-gnu-gcc
-            pkg: "gcc-sh4-linux-gnu"
-            flags: "-static"
-          - name: linux-loongarch64
-            type: apt
-            cc: loongarch64-linux-gnu-gcc
-            pkg: "gcc-loongarch64-linux-gnu"
-            flags: "-static"
+          # ---- Linux glibc ----
+          - { name: linux-amd64,       type: apt, cc: gcc,                              pkg: "",                                 flags: "-static" }
+          - { name: linux-i386,        type: apt, cc: gcc,                              pkg: "gcc-i686-linux-gnu",              flags: "-static -m32" }
+          - { name: linux-arm64,       type: apt, cc: aarch64-linux-gnu-gcc,            pkg: "gcc-aarch64-linux-gnu",           flags: "-static" }
+          - { name: linux-armv7,       type: apt, cc: arm-linux-gnueabihf-gcc,          pkg: "gcc-arm-linux-gnueabihf",         flags: "-static" }
+          - { name: linux-armv6,       type: apt, cc: arm-linux-gnueabi-gcc,            pkg: "gcc-arm-linux-gnueabi",           flags: "-static" }
+          - { name: linux-mips,        type: apt, cc: mips-linux-gnu-gcc,               pkg: "gcc-mips-linux-gnu",              flags: "-static" }
+          - { name: linux-mipsel,      type: apt, cc: mipsel-linux-gnu-gcc,             pkg: "gcc-mipsel-linux-gnu",            flags: "-static" }
+          - { name: linux-mips64,      type: apt, cc: mips64-linux-gnuabi64-gcc,        pkg: "gcc-mips64-linux-gnuabi64",       flags: "-static" }
+          - { name: linux-mips64el,    type: apt, cc: mips64el-linux-gnuabi64-gcc,      pkg: "gcc-mips64el-linux-gnuabi64",     flags: "-static" }
+          - { name: linux-riscv64,     type: apt, cc: riscv64-linux-gnu-gcc,            pkg: "gcc-riscv64-linux-gnu",           flags: "-static" }
+          - { name: linux-powerpc,     type: apt, cc: powerpc-linux-gnu-gcc,            pkg: "gcc-powerpc-linux-gnu",           flags: "-static" }
+          - { name: linux-powerpc64,   type: apt, cc: powerpc64-linux-gnu-gcc,          pkg: "gcc-powerpc64-linux-gnu",         flags: "-static" }
+          - { name: linux-ppc64le,     type: apt, cc: powerpc64le-linux-gnu-gcc,        pkg: "gcc-powerpc64le-linux-gnu",       flags: "-static" }
+          - { name: linux-s390x,       type: apt, cc: s390x-linux-gnu-gcc,              pkg: "gcc-s390x-linux-gnu",             flags: "-static" }
+          - { name: linux-sparc64,     type: apt, cc: sparc64-linux-gnu-gcc,            pkg: "gcc-sparc64-linux-gnu",           flags: "-static" }
+          - { name: linux-m68k,        type: apt, cc: m68k-linux-gnu-gcc,               pkg: "gcc-m68k-linux-gnu",              flags: "-static" }
+          - { name: linux-alpha,       type: apt, cc: alpha-linux-gnu-gcc,              pkg: "gcc-alpha-linux-gnu",             flags: "-static" }
+          - { name: linux-hppa,        type: apt, cc: hppa-linux-gnu-gcc,               pkg: "gcc-hppa-linux-gnu",              flags: "-static" }
+          - { name: linux-sh4,         type: apt, cc: sh4-linux-gnu-gcc,                pkg: "gcc-sh4-linux-gnu",               flags: "-static" }
+          - { name: linux-loongarch64, type: apt, cc: loongarch64-linux-gnu-gcc,        pkg: "gcc-loongarch64-linux-gnu",       flags: "-static" }
 
-          # ============ Alpine / musl ============
-          - name: alpine-amd64
-            type: musl
-            cc: musl-gcc
-            flags: "-static"
+          # ---- Alpine / musl (static) ----
+          - { name: alpine-amd64,      type: musl,      cc: musl-gcc,                         flags: "-static" }
+          - { name: alpine-arm64,      type: dockcross,  image: dockcross/linux-arm64-musl,    cc: armv8-linux-musl-cc,           flags: "-static" }
+          - { name: alpine-armv7,      type: dockcross,  image: dockcross/linux-armv7l-musl,   cc: armv7l-linux-musleabihf-cc,    flags: "-static" }
+          - { name: alpine-armv6,      type: dockcross,  image: dockcross/linux-armv6-musl,    cc: armv6-linux-musleabihf-cc,     flags: "-static" }
+          - { name: alpine-riscv64,    type: dockcross,  image: dockcross/linux-riscv64,       cc: riscv64-linux-gnu-gcc,         flags: "-static" }
+          - { name: alpine-mips,       type: dockcross,  image: dockcross/linux-mips,          cc: mips-linux-gnu-gcc,            flags: "-static" }
 
-          # dockcross musl (Alpine兼容)
-          - name: alpine-arm64
-            type: dockcross
-            image: dockcross/linux-arm64-musl
-            cc: armv8-linux-musl-cc
-            flags: "-static"
-          - name: alpine-armv7
-            type: dockcross
-            image: dockcross/linux-armv7l-musl
-            cc: armv7l-linux-musleabihf-cc
-            flags: "-static"
-          - name: alpine-armv6
-            type: dockcross
-            image: dockcross/linux-armv6-musl
-            cc: armv6-linux-musleabihf-cc
-            flags: "-static"
-          - name: alpine-riscv64
-            type: dockcross
-            image: dockcross/linux-riscv64
-            cc: riscv64-linux-gnu-gcc
-            flags: "-static"
-          - name: alpine-mips
-            type: dockcross
-            image: dockcross/linux-mips
-            cc: mips-linux-gnu-gcc
-            flags: "-static"
+          # ---- Windows (mingw) ----
+          - { name: windows-amd64,     type: apt, cc: x86_64-w64-mingw32-gcc,    pkg: "gcc-mingw-w64-x86-64",  flags: "-static", suffix: ".exe" }
+          - { name: windows-i386,      type: apt, cc: i686-w64-mingw32-gcc,      pkg: "gcc-mingw-w64-i686",    flags: "-static", suffix: ".exe" }
+          - { name: windows-arm64,     type: apt, cc: aarch64-w64-mingw32-gcc,   pkg: "gcc-mingw-w64-arm64",   flags: "-static", suffix: ".exe" }
 
-          # ============ Windows (mingw) ============
-          - name: windows-amd64
-            type: apt
-            cc: x86_64-w64-mingw32-gcc
-            pkg: "gcc-mingw-w64-x86-64"
-            flags: "-static"
-            suffix: ".exe"
-          - name: windows-i386
-            type: apt
-            cc: i686-w64-mingw32-gcc
-            pkg: "gcc-mingw-w64-i686"
-            flags: "-static"
-            suffix: ".exe"
-          - name: windows-arm64
-            type: apt
-            cc: aarch64-w64-mingw32-gcc
-            pkg: "gcc-mingw-w64-arm64"
-            flags: "-static"
-            suffix: ".exe"
+          # ---- macOS (osxcross) ----
+          - { name: darwin-amd64,      type: osxcross, cc: o64-clang,  flags: "" }
+          - { name: darwin-arm64,      type: osxcross, cc: oa64-clang, flags: "" }
 
-          # ============ macOS (osxcross) ============
-          - name: darwin-amd64
-            type: osxcross
-            cc: o64-clang
-            flags: ""
-          - name: darwin-arm64
-            type: osxcross
-            cc: oa64-clang
-            flags: ""
+          # ---- FreeBSD (taiki-e) ----
+          - { name: freebsd-amd64,     type: freebsd, target: x86_64-unknown-freebsd,    cc: clang }
+          - { name: freebsd-arm64,     type: freebsd, target: aarch64-unknown-freebsd,    cc: clang }
+          - { name: freebsd-i686,      type: freebsd, target: i686-unknown-freebsd,       cc: clang }
 
-          # ============ FreeBSD ============
-          - name: freebsd-amd64
-            type: freebsd
-            target: x86_64-unknown-freebsd
-            cc: clang
-          - name: freebsd-arm64
-            type: freebsd
-            target: aarch64-unknown-freebsd
-            cc: clang
-          - name: freebsd-i686
-            type: freebsd
-            target: i686-unknown-freebsd
-            cc: clang
+          # ---- NetBSD (taiki-e) ----
+          - { name: netbsd-amd64,      type: netbsd, target: x86_64-unknown-netbsd,      cc: x86_64-unknown-netbsd-gcc }
+          - { name: netbsd-arm64,      type: netbsd, target: aarch64-unknown-netbsd,      cc: aarch64-unknown-netbsd-gcc }
 
-          # ============ NetBSD ============
-          - name: netbsd-amd64
-            type: netbsd
-            target: x86_64-unknown-netbsd
-            cc: x86_64-unknown-netbsd-gcc
-          - name: netbsd-arm64
-            type: netbsd
-            target: aarch64-unknown-netbsd
-            cc: aarch64-unknown-netbsd-gcc
-
-          # ============ Android ============
-          - name: android-arm64
-            type: android
-            target: aarch64-linux-android
-            api: 21
-          - name: android-armv7
-            type: android
-            target: armv7a-linux-androideabi
-            api: 21
-          - name: android-x86_64
-            type: android
-            target: x86_64-linux-android
-            api: 21
+          # ---- Android (NDK) ----
+          - { name: android-arm64,     type: android, target: aarch64-linux-android,      api: 21 }
+          - { name: android-armv7,     type: android, target: armv7a-linux-androideabi,   api: 21 }
+          - { name: android-x86_64,    type: android, target: x86_64-linux-android,       api: 21 }
 
     steps:
-      # ============ 通用：下载源码 ============
+      # === common: download source ===
       - name: Download upstream source
         run: |
           curl -sL -o source.zip "${{ needs.check-upstream.outputs.download_url }}"
@@ -278,14 +128,14 @@ jobs:
           DIR=$(unzip -Z -1 source.zip | head -1 | cut -d/ -f1)
           mv "$DIR" src
 
-      # ============ apt 类型 ============
-      - name: "[apt] Install cross-compiler"
+      # === type: apt ===
+      - name: "[apt] Install"
         if: matrix.type == 'apt'
         run: |
           sudo dpkg --add-architecture i386
           sudo apt-get update -qq
           if [ -n "${{ matrix.pkg }}" ]; then
-            sudo apt-get install -y -qq ${{ matrix.pkg }} || echo "pkg not found, continue"
+            sudo apt-get install -y -qq ${{ matrix.pkg }} || echo "pkg missing, skip"
           fi
 
       - name: "[apt] Build"
@@ -298,14 +148,11 @@ jobs:
                CFLAGS="-Wall -std=c99 -O2 -s ${{ matrix.flags }}" \
                LDFLAGS="-s ${{ matrix.flags }}" 2>&1 || exit 0
           mkdir -p ../out
-          cp microsocks "../out/${BIN}" 2>/dev/null || \
-            cp microsocks.exe "../out/${BIN}" 2>/dev/null || true
-          if [ -f "../out/${BIN}" ]; then
-            echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"
-          fi
+          cp microsocks "../out/${BIN}" 2>/dev/null || cp microsocks.exe "../out/${BIN}" 2>/dev/null || true
+          if [ -f "../out/${BIN}" ]; then echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"; fi
 
-      # ============ musl 类型 (Alpine x86_64) ============
-      - name: "[musl] Install musl-tools"
+      # === type: musl ===
+      - name: "[musl] Install"
         if: matrix.type == 'musl'
         run: sudo apt-get install -y -qq musl-tools
 
@@ -321,23 +168,20 @@ jobs:
           cp microsocks "../out/${BIN}"
           echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"
 
-      # ============ dockcross 类型 (Alpine ARM/MIPS/RISC-V) ============
+      # === type: dockcross ===
       - name: "[dockcross] Build"
         if: matrix.type == 'dockcross'
         run: |
-          docker run --rm -v "$(pwd):/work" \
-            ${{ matrix.image }} \
+          docker run --rm -v "$(pwd):/work" ${{ matrix.image }} \
             bash -c "cd /work/src && make CC='${{ matrix.cc }}' \
               CFLAGS='-Wall -std=c99 -O2 -s ${{ matrix.flags }}' \
               LDFLAGS='-s ${{ matrix.flags }}'" 2>&1 || exit 0
           BIN="microsocks-${{ matrix.name }}"
           mkdir -p out
           cp src/microsocks "out/${BIN}" 2>/dev/null || true
-          if [ -f "out/${BIN}" ]; then
-            echo "OK: ${BIN} ($(wc -c < "out/${BIN}") bytes)"
-          fi
+          if [ -f "out/${BIN}" ]; then echo "OK: ${BIN} ($(wc -c < "out/${BIN}") bytes)"; fi
 
-      # ============ osxcross 类型 (macOS) ============
+      # === type: osxcross ===
       - name: "[osxcross] Setup"
         if: matrix.type == 'osxcross'
         uses: Timmmm/setup-osxcross@v2
@@ -354,11 +198,9 @@ jobs:
                LDFLAGS="-s" LIBS="" 2>&1 || exit 0
           mkdir -p ../out
           cp microsocks "../out/${BIN}" 2>/dev/null || true
-          if [ -f "../out/${BIN}" ]; then
-            echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"
-          fi
+          if [ -f "../out/${BIN}" ]; then echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"; fi
 
-      # ============ FreeBSD (taiki-e) ============
+      # === type: freebsd ===
       - name: "[freebsd] Setup toolchain"
         if: matrix.type == 'freebsd'
         uses: taiki-e/setup-cross-toolchain-action@v2
@@ -375,11 +217,9 @@ jobs:
                LDFLAGS="-s" 2>&1 || exit 0
           mkdir -p ../out
           cp microsocks "../out/${BIN}" 2>/dev/null || true
-          if [ -f "../out/${BIN}" ]; then
-            echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"
-          fi
+          if [ -f "../out/${BIN}" ]; then echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"; fi
 
-      # ============ NetBSD (taiki-e) ============
+      # === type: netbsd ===
       - name: "[netbsd] Setup toolchain"
         if: matrix.type == 'netbsd'
         uses: taiki-e/setup-cross-toolchain-action@v2
@@ -397,11 +237,9 @@ jobs:
                LDFLAGS="-s" 2>&1 || exit 0
           mkdir -p ../out
           cp microsocks "../out/${BIN}" 2>/dev/null || true
-          if [ -f "../out/${BIN}" ]; then
-            echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"
-          fi
+          if [ -f "../out/${BIN}" ]; then echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"; fi
 
-      # ============ Android (NDK) ============
+      # === type: android ===
       - name: "[android] Setup NDK"
         if: matrix.type == 'android'
         uses: android-actions/setup-ndk@v2
@@ -422,11 +260,9 @@ jobs:
                LDFLAGS="-s -static -fPIE -pie" 2>&1 || exit 0
           mkdir -p ../out
           cp microsocks "../out/${BIN}" 2>/dev/null || true
-          if [ -f "../out/${BIN}" ]; then
-            echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"
-          fi
+          if [ -f "../out/${BIN}" ]; then echo "OK: ${BIN} ($(wc -c < "../out/${BIN}") bytes)"; fi
 
-      # ============ 上传产物 ============
+      # === upload ===
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -434,7 +270,7 @@ jobs:
           path: out/
 
   # ============================================================
-  # Job 3: 发布 Release
+  # Job 3: create release
   # ============================================================
   release:
     needs: [check-upstream, build]
@@ -454,8 +290,7 @@ jobs:
         run: |
           cd artifacts
           sha256sum * > ../checksums.txt
-          echo "=== SHA256 ==="
-          cat ../checksums.txt
+          echo "=== SHA256 ===" && cat ../checksums.txt
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -478,7 +313,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add .github/last_release_tag
           if git diff --staged --quiet; then
-            echo "No change to commit"
+            echo "no change"
           else
             git commit -m "chore: update last processed release to ${{ needs.check-upstream.outputs.latest_tag }}"
             git push
