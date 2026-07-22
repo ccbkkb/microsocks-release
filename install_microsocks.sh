@@ -3,8 +3,6 @@
 # * 自动识别系统与架构, 从 release 中挑选合适的预编译二进制
 # * 生成随机账号/密码
 # * 自动配置开机自启 (systemd / OpenRC / SysVinit / launchd)
-# 上游源码: https://github.com/rofl0r/microsocks
-# 预编译发布: https://github.com/ccbkkb/microsocks-release/releases/tag/v1.0.5
 set -e
 
 # ================== 配置区 ==================
@@ -13,7 +11,7 @@ REPO="ccbkkb/microsocks-release"
 BIN_PATH="/usr/local/bin/microsocks"
 CONF_DIR="/etc/microsocks"
 CONF_FILE="${CONF_DIR}/microsocks.conf"
-PORT="${PORT:-1080}"        # 可通过环境变量 PORT 覆盖
+PORT="${PORT:-1080}"
 # ============================================
 
 # 颜色输出
@@ -40,32 +38,32 @@ detect_os() {
     esac
 }
 
-# ============ 检测架构, 输出 release 内的标准名 ============
+# ============ 检测架构 ============
 detect_arch() {
     case "$(uname -m)" in
         x86_64|amd64)         echo amd64 ;;
-        aarch64|arm64)        echo arm64 ;;
-        armv7l|armv7)         echo armv7 ;;
-        armv6l|armv6)         echo armv6 ;;
-        mips64)               echo mips64 ;;
-        mips64el)             echo mips64el ;;
-        mipsel)               echo mipsel ;;
-        mips)                 echo mips ;;
-        ppc64le|powerpc64le)  echo ppc64le ;;
-        powerpc|ppc)          echo powerpc ;;
-        powerpc64|ppc64)      echo powerpc64 ;;
-        riscv64)              echo riscv64 ;;
-        s390x)                echo s390x ;;
-        m68k)                 echo m68k ;;
-        hppa)                 echo hppa ;;
-        sh4)                  echo sh4 ;;
-        sparc64)              echo sparc64 ;;
-        alpha)                echo alpha ;;
-        *)                    uname -m ;;
+        aarch64|arm64)       echo arm64 ;;
+        armv7l|armv7)        echo armv7 ;;
+        armv6l|armv6)        echo armv6 ;;
+        mips64)              echo mips64 ;;
+        mips64el)            echo mips64el ;;
+        mipsel)              echo mipsel ;;
+        mips)                echo mips ;;
+        ppc64le|powerpc64le) echo ppc64le ;;
+        powerpc|ppc)         echo powerpc ;;
+        powerpc64|ppc64)     echo powerpc64 ;;
+        riscv64)             echo riscv64 ;;
+        s390x)               echo s390x ;;
+        m68k)                echo m68k ;;
+        hppa)                echo hppa ;;
+        sh4)                 echo sh4 ;;
+        sparc64)             echo sparc64 ;;
+        alpha)               echo alpha ;;
+        *)                   uname -m ;;
     esac
 }
 
-# ============ 已发布的 assets 清单（来自 v1.0.5 release） ============
+# ============ 已发布的 assets 清单 (来自 v1.0.5 release) ============
 RELEASE_ASSETS=(
     alpine-amd64 alpine-armv6 alpine-armv7
     darwin-amd64 darwin-arm64
@@ -86,6 +84,26 @@ asset_exists() {
 # ============ init 系统检测 ============
 is_openrc()  { command -v rc-update >/dev/null 2>&1 || [ -x /sbin/openrc-run ]; }
 is_systemd() { [ -d /run/systemd/system ] || ps -p 1 -o comm= 2>/dev/null | grep -q '^systemd$'; }
+
+# ============ 准备下载依赖 ============
+ensure_download_tool() {
+    if command -v curl >/dev/null 2>&1 || command -v wget >/dev/null 2>&1; then
+        return 0
+    fi
+    blue "尝试自动安装下载工具 (curl)..."
+    if command -v apk >/dev/null 2>&1; then
+        apk update >/dev/null && apk add --no-cache curl ca-certificates >/dev/null
+    elif command -v apt-get >/dev/null 2>&1; then
+        apt-get update -qq && apt-get install -y -qq curl ca-certificates
+    elif command -v yum >/dev/null 2>&1; then
+        yum install -y -q curl ca-certificates
+    elif command -v dnf >/dev/null 2>&1; then
+        dnf install -y -q curl ca-certificates
+    else
+        err "未发现 curl/wget, 也无法自动安装, 请手动安装其一"
+        exit 1
+    fi
+}
 
 # ============ 生成随机账号密码 ============
 rand_string() {
@@ -111,7 +129,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${BIN_PATH} -p ${port} -u ${user} -P ${pass}
+ExecStart=${BIN_PATH} -p ${port} -u $user -P ${pass}
 Restart=on-failure
 RestartSec=3
 LimitNOFILE=65535
@@ -123,7 +141,7 @@ PrivateTmp=true
 [Install]
 WantedBy=multi-user.target
 EOF
-    ok "已写入 systemd unit"
+    green "已写入 systemd unit"
     systemctl daemon-reload
     systemctl enable --now microsocks
 }
@@ -135,14 +153,13 @@ write_openrc_service() {
     cat > "${CONF_FILE}" <<EOF
 # microsocks 配置文件, 由 OpenRC 服务在启动时 source
 MICROSOCKS_PORT=${port}
-MICROSOCKS_USER=${user}
+MICROSOCKS_USER=$user
 MICROSOCKS_PASS=${pass}
 EOF
     chmod 600 "${CONF_FILE}"
 
     cat > /etc/init.d/microsocks <<'EOF'
 #!/sbin/openrc-run
-# microsocks OpenRC 服务
 name="microsocks"
 description="microsocks tiny SOCKS5 server"
 command="/usr/local/bin/microsocks"
@@ -162,18 +179,19 @@ start_pre() {
 }
 EOF
     chmod +x /etc/init.d/microsocks
-    ok "已写入 OpenRC 服务"
+    mkdir -p /var/log
+    green "已写入 OpenRC 服务"
     rc-update add microsocks default
     rc-service microsocks restart
 }
 
-# ============ 写 SysVinit 服务 (非 systemd/openrc 的老系统) ============
+# ============ 写 SysVinit 服务 ============
 write_sysvinit_service() {
     local user="$1" pass="$2" port="$3"
     mkdir -p "${CONF_DIR}"
     cat > "${CONF_FILE}" <<EOF
 MICROSOCKS_PORT=${port}
-MICROSOCKS_USER=${user}
+MICROSOCKS_USER=$user
 MICROSOCKS_PASS=${pass}
 EOF
     chmod 600 "${CONF_FILE}"
@@ -197,7 +215,7 @@ CONF="/etc/microsocks/microsocks.conf"
 ARGS="-p ${MICROSOCKS_PORT} -u ${MICROSOCKS_USER} -P ${MICROSOCKS_PASS}"
 
 case "$1" in
-    start)   echo "Starting ${NAME}";
+    start)   echo "Starting ${NAME}"
              start-stop-daemon -S -b -m -p "${PIDFILE}" -x "${DAEMON}" -- ${ARGS} ;;
     stop)    start-stop-daemon -K -p "${PIDFILE}" ;;
     restart) "$0" stop; sleep 1; "$0" start ;;
@@ -207,7 +225,7 @@ esac
 exit 0
 EOF
     chmod +x /etc/init.d/microsocks
-    ok "已写入 SysVinit 服务"
+    green "已写入 SysVinit 服务"
     if command -v update-rc.d >/dev/null 2>&1; then
         update-rc.d microsocks defaults
     elif command -v chkconfig >/dev/null 2>&1; then
@@ -232,7 +250,7 @@ write_launchd_plist() {
     <array>
         <string>${BIN_PATH}</string>
         <string>-p</string><string>${port}</string>
-        <string>-u</string><string>${user}</string>
+        <string>-u</string><string>$user</string>
         <string>-P</string><string>${pass}</string>
     </array>
     <key>RunAtLoad</key><true/>
@@ -241,7 +259,7 @@ write_launchd_plist() {
 </dict>
 </plist>
 EOF
-    ok "已写入 launchd plist"
+    green "已写入 launchd plist"
     launchctl unload "${plist}" 2>/dev/null || true
     launchctl load -w "${plist}"
 }
@@ -259,7 +277,7 @@ main() {
     blue "系统: ${os}"
     blue "架构: ${arch} ($(uname -m))"
 
-    # Asset 匹配: Alpine 优先用 alpine-* 静态二进制
+    # Alpine 优先用 alpine-* 静态二进制
     if [ "${os}" = "alpine" ]; then
         if asset_exists "alpine-${arch}"; then
             asset_name="microsocks-alpine-${arch}"
@@ -278,7 +296,7 @@ main() {
         err "或自行从源码编译: https://github.com/rofl0r/microsocks"
         exit 1
     fi
-    ok "选择资产: ${asset_name}"
+    green "选择资产: ${asset_name}"
 
     # 备份原 binary
     if [ -f "${BIN_PATH}" ]; then
@@ -286,53 +304,57 @@ main() {
         yellow "已备份旧二进制"
     fi
 
+    # 备下载工具
+    ensure_download_tool
+
     # 下载
     mkdir -p "$(dirname "${BIN_PATH}")"
     local url="https://github.com/${REPO}/releases/download/${VERSION}/${asset_name}"
     blue "下载: ${url}"
-    if     command -v curl  >/dev/null 2>&1 && curl     -fsSL "${url}" -o "${BIN_PATH}" \
-        || command -v wget  >/dev/null 2>&1 && wget    -qO "${BIN_PATH}" "${url}"; then
+    if   command -v curl >/dev/null 2>&1 && curl -fsSL "${url}" -o "${BIN_PATH}"; then
+        :
+    elif command -v wget >/dev/null 2>&1 && wget -qO "${BIN_PATH}" "${url}"; then
         :
     else
-        err "需 curl 或 wget 完成下载"
+        err "下载失败, 请检查网络或手动安装 curl/wget"
         exit 1
     fi
     chmod +x "${BIN_PATH}"
-    ok "已安装到 ${BIN_PATH} ($(ls -l ${BIN_PATH} | awk '{print $5}')) bytes"
+    green "已安装到 ${BIN_PATH} ($(ls -l ${BIN_PATH} | awk '{print $5}') bytes)"
 
     # 生成随机账号/密码
     local user pass
     user="$(gen_user)"
     pass="$(gen_pass)"
     blue "随机账号:"
-    yellow "  用户: ${user}"
+    yellow "  用户: $user"
     yellow "  密码: ${pass}"
     blue  "  端口: ${PORT}"
 
     # 配置开机自启
     case "${os}" in
-        darwin)  write_launchd_plist     "${user}" "${pass}" "${PORT}" ;;
-        alpine)  write_openrc_service    "${user}" "${pass}" "${PORT}" ;;
+        darwin)  write_launchd_plist      "$user" "${pass}" "${PORT}" ;;
+        alpine)  write_openrc_service     "$user" "${pass}" "${PORT}" ;;
         linux)
-            if   is_systemd; then write_systemd_unit   "${user}" "${pass}" "${PORT}"
-            elif is_openrc;   then write_openrc_service "${user}" "${pass}" "${PORT}"
-            elif [ -d /etc/init.d ]; then write_sysvinit_service "${user}" "${pass}" "${PORT}"
+            if   is_systemd; then write_systemd_unit   "$user" "${pass}" "${PORT}"
+            elif is_openrc;   then write_openrc_service "$user" "${pass}" "${PORT}"
+            elif [ -d /etc/init.d ]; then write_sysvinit_service "$user" "${pass}" "${PORT}"
             else
                 err "未识别到 systemd / OpenRC / SysVinit, 跳过开机自启"
-                err "可手动: ${BIN_PATH} -p ${PORT} -u ${user} -P ${pass}"
+                err "可手动: ${BIN_PATH} -p ${PORT} -u $user -P ${pass}"
             fi
             ;;
         netbsd)
-            yellow "NetBSD 不自动写 rc 脚本; 可手动启动: ${BIN_PATH} -p ${PORT} -u ${user} -P ${pass}"
+            yellow "NetBSD 不自动写 rc 脚本; 可手动启动: ${BIN_PATH} -p ${PORT} -u $user -P ${pass}"
             ;;
     esac
 
     # 输出汇总
     say ""
     green "============================================"
-    green " microsocks 安装完成！"
+    green " microsocks 安装完成!"
     green "============================================"
-    yellow " 用户:  ${user}"
+    yellow " 用户:  $user"
     yellow " 密码:  ${pass}"
     yellow " 端口:  ${PORT}"
     blue  " 二进制: ${BIN_PATH}"
@@ -344,7 +366,7 @@ main() {
     elif [ -f /Library/LaunchDaemons/io.microsocks.plist ]; then
         blue " launchctl:   launchctl load|unload /Library/LaunchDaemons/io.microsocks.plist"
     fi
-    blue  " 测试代理:    curl --socks5 ${user}:${pass}@127.0.0.1:${PORT} https://www.google.com -I"
+    blue  " 测试代理:    curl --socks5 $user:${pass}@127.0.0.1:${PORT} https://www.google.com -I"
     blue  " 上游源码:    https://github.com/rofl0r/microsocks"
     blue  " 二进制发布:  https://github.com/${REPO}/releases/tag/${VERSION}"
 }
